@@ -3,6 +3,9 @@ from evaluator import ProbingEvaluator
 import torch
 from models import JEPAWorldModel
 import glob
+import os
+import argparse
+import wandb
 
 
 def get_device():
@@ -61,21 +64,35 @@ def load_model():
     return model
 
 
-def evaluate_model(device, model, probe_train_ds, probe_val_ds):
-    evaluator = ProbingEvaluator(
-        device=device,
-        model=model,
-        probe_train_ds=probe_train_ds,
-        probe_val_ds=probe_val_ds,
-        quick_debug=False,
+def evaluate_model(args, model, device):
+    """Evaluate the model using probing tasks."""
+    # Initialize wandb for evaluation
+    wandb.init(
+        project="jepa-wall-eval",
+        name="probing-evaluation"
     )
-
-    prober = evaluator.train_pred_prober()
-
-    avg_losses = evaluator.evaluate_all(prober=prober)
-
-    for probe_attr, loss in avg_losses.items():
-        print(f"{probe_attr} loss: {loss}")
+    
+    evaluator = ProbingEvaluator(
+        model=model,
+        device=device,
+        data_path=args.data_path,
+        batch_size=args.batch_size
+    )
+    
+    # Run evaluation
+    results = evaluator.evaluate()
+    
+    # Log evaluation metrics to wandb
+    for attr, metrics in results.items():
+        wandb.log({
+            f"{attr}_loss": metrics['loss'],
+            f"{attr}_accuracy": metrics['accuracy']
+        })
+    
+    # Finish wandb run
+    wandb.finish()
+    
+    return results
 
 
 if __name__ == "__main__":

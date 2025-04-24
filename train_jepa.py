@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 import argparse
 from torch.utils.data import DataLoader
+import wandb
 
 # Import your JEPA model
 from models import JEPAWorldModel
@@ -61,6 +62,13 @@ def create_optimizer_and_scheduler(model, args, train_loader):
 
 def train_jepa(args, train_loader, val_loader, model, device):
     """Train the JEPA model with VICReg regularization."""
+    # Initialize wandb
+    wandb.init(
+        project="jepa-wall",
+        config=vars(args),
+        name=f"jepa-{args.repr_dim}-{args.latent_dim}-{args.hidden_dim}"
+    )
+    
     model.to(device)
     
     # Create optimizer and scheduler
@@ -135,26 +143,40 @@ def train_jepa(args, train_loader, val_loader, model, device):
             reg_loss_total += reg_loss.item() if isinstance(reg_loss, torch.Tensor) else 0
             vicreg_loss_total += vicreg_loss.item() if isinstance(vicreg_loss, torch.Tensor) else 0
             
+            # Log batch metrics to wandb
             if (batch_idx + 1) % args.log_interval == 0:
-                print(f"Epoch {epoch+1}/{args.epochs}, Batch {batch_idx+1}/{len(train_loader)}, "
-                      f"Loss: {loss.item():.4f}, Pred Loss: {pred_loss.item():.4f}, "
-                      f"Reg Loss: {reg_loss.item():.4f}, VICReg Loss: {vicreg_loss.item():.4f}")
+                wandb.log({
+                    "batch_loss": loss.item(),
+                    "batch_pred_loss": pred_loss.item(),
+                    "batch_reg_loss": reg_loss.item() if isinstance(reg_loss, torch.Tensor) else 0,
+                    "batch_vicreg_loss": vicreg_loss.item() if isinstance(vicreg_loss, torch.Tensor) else 0,
+                    "learning_rate": optimizer.param_groups[0]['lr'],
+                    "step": step
+                })
+                
                 if not args.no_vicreg:
-                    print(f"  VICReg details - Var Loss: {vicreg_info['var_loss']:.4f}, "
-                          f"Cov Loss: {vicreg_info['cov_loss']:.4f}")
+                    wandb.log({
+                        "batch_vicreg_var_loss": vicreg_info['var_loss'],
+                        "batch_vicreg_cov_loss": vicreg_info['cov_loss'],
+                        "step": step
+                    })
             
             step += 1
         
+        # Calculate epoch averages
         avg_train_loss = train_loss / len(train_loader)
         avg_pred_loss = pred_loss_total / len(train_loader)
         avg_reg_loss = reg_loss_total / len(train_loader)
         avg_vicreg_loss = vicreg_loss_total / len(train_loader)
         
-        print(f"Epoch {epoch+1}/{args.epochs} completed. "
-              f"Avg Train Loss: {avg_train_loss:.4f}, "
-              f"Avg Pred Loss: {avg_pred_loss:.4f}, "
-              f"Avg Reg Loss: {avg_reg_loss:.4f}, "
-              f"Avg VICReg Loss: {avg_vicreg_loss:.4f}")
+        # Log epoch metrics to wandb
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": avg_train_loss,
+            "train_pred_loss": avg_pred_loss,
+            "train_reg_loss": avg_reg_loss,
+            "train_vicreg_loss": avg_vicreg_loss,
+        })
         
         # Validation
         model.eval()
@@ -176,7 +198,12 @@ def train_jepa(args, train_loader, val_loader, model, device):
                 val_loss += loss.item()
         
         avg_val_loss = val_loss / len(val_loader)
-        print(f"Validation Loss: {avg_val_loss:.4f}")
+        
+        # Log validation metrics
+        wandb.log({
+            "epoch": epoch,
+            "val_loss": avg_val_loss
+        })
         
         # Save best model
         if avg_val_loss < best_val_loss:
@@ -188,6 +215,12 @@ def train_jepa(args, train_loader, val_loader, model, device):
                 'val_loss': avg_val_loss,
             }, save_path)
             print(f"Model saved to {save_path}")
+            
+            # Log best model metrics
+            wandb.log({
+                "best_val_loss": best_val_loss,
+                "best_epoch": epoch
+            })
     
     # Save final model
     final_save_path = os.path.join(args.save_dir, 'model_weights_final.pth')
@@ -198,6 +231,15 @@ def train_jepa(args, train_loader, val_loader, model, device):
         'val_loss': avg_val_loss,
     }, final_save_path)
     print(f"Final model saved to {final_save_path}")
+    
+    # Log final metrics
+    wandb.log({
+        "final_val_loss": avg_val_loss,
+        "final_epoch": args.epochs
+    })
+    
+    # Finish wandb run
+    wandb.finish()
     
     return model
 
