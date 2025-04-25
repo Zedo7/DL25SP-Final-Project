@@ -99,20 +99,20 @@ class JEPA(nn.Module):
         
         # Encoder: takes states (images) and encodes them into representations
         self.encoder = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=3, stride=2, padding=1),  # 32x32
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 16x16
+            nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3),  # 64x64 -> 32x32
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 8x8
+            nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2),  # 32x32 -> 16x16
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 4x4
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 8x8 -> 4x4
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
             nn.Flatten(),
-            nn.Linear(256 * 4 * 4, hidden_dim),
+            nn.Linear(512 * 4 * 4, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, repr_dim)
         )
@@ -403,4 +403,4 @@ class JEPAWorldModel(nn.Module):
         """
         # Forward pass through the JEPA model
         predictions = self.jepa(states, actions, deterministic=True)
-        return predictions[:, 1:, :]
+        return predictions  # Return full sequence including initial state

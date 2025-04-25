@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import itertools
 import os
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from tqdm.auto import tqdm
 import numpy as np
